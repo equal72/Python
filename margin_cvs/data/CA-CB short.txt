@@ -1,0 +1,18 @@
+M1 M2 M3 M4 M5 M6 M7 M8 M9 M10 V1 V2 V3 V4 V5 V6 V7 V8 V9 V10 V11
+CPP VA_TCD H_VA H_CA VA_RCS VA_slope MG_CD HK_thk_elec H_MG MG_climb VA_CDU VA_PC_OVL VA_APT H_VA_var H_CA_var PC_CDU PC_LER PC_PW H_MG_var MG_climb_var VA_RCS_var
+48 14.3 17 32 3 89 14.5 1 15.5 0 2.4 2.5 0.6 3 3 2 1.4 0 3 0 1
+48 15 17 32 3 89 15 1 15.5 0 3 3 0.6 3 6 2 1.4 0 4.8 0 1
+54 18.3 20 33 5 88 16 1 18 0 3 3 0.6 3 6 2 1.5 0 0 0 3
+
+
+equation
+Ox = 0
+Oy = 0
+Ax = CPP/2-VA_TCD/2+VA_CDU/2+VA_PC_OVL+VA_APT
+Ay = H_CA+H_VA+H_CA_var+H_VA_var
+By = H_CA+H_CA_var-VA_RCS+VA_RCS_var
+Bx = Ax+(Ay-By)/tan(PI*VA_slope/180)
+Cx = MG_CD/2+HK_thk_elec+PC_CDU/2+PC_PW+PC_LER
+Cy = H_MG+H_MG_var+Max(MG_climb+MG_climb_var,0)
+S2 = AtoB(Bx, By, Cx, Cy)
+Output = Max(0, S2)

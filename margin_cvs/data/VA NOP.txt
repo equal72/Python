@@ -1,0 +1,15 @@
+M1 M2 M3 M4 M5 M6 V1 V2 V3 V4 V5 V6
+H_VA SiN_thk TEOS1_thk TEOS2_thk VA_TCD VA_slope VA_CDU VA_APT SiN_thk_var TEOS1_thk_var TEOS2_thk_var VA_slope_var
+17 5 20 20 14.3 89 2.4 0.6 0.5 2 2 1
+17 5 20 20 16.6 89 3 0.6 0.5 2 2 1
+
+equation
+Ay = TEOS1_thk+SiN_thk+TEOS2_thk+SiN_thk_var+TEOS1_thk_var+TEOS2_thk_var
+Ax = -VA_TCD/2-(TEOS1_thk+SiN_thk+TEOS2_thk-H_VA)/tan(PI*VA_slope/180)-VA_CDU/2-VA_APT
+Cy = Ay
+Cx = VA_TCD/2+(TEOS1_thk+SiN_thk+TEOS2_thk-H_VA)/tan(PI*VA_slope/180)+VA_CDU/2+VA_APT
+By = 0
+Bx = Ax+(Ay-By)/tan(PI*(VA_slope+VA_slope_var)/180)
+Dy = 0
+Dx = Cx-(Cy-Dy)/tan(PI*(VA_slope+VA_slope_var)/180)
+Output = Dx-Bx
