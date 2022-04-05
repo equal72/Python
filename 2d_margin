@@ -1,0 +1,157 @@
+import pandas as pd
+from functions import *
+from measure import *
+import glob
+import numpy as np
+from pathlib import Path
+import time
+
+
+# path = 'D:\Python\margin\data'
+path = dir2 = str(Path('.').absolute()) + '\\data'
+infile = path + '/*.txt'
+files = glob.glob(infile)
+
+for file in files:
+    filename = ExtractFileName(file)
+    df = pd.DataFrame()
+    equations = []
+    column = []
+    anal_column = []
+    positions = ['Ax','Ay','Bx','By','Cx','Cy','Dx','Dy','Ex','Ey','Fx','Fy','Gx','Gy','Hx','Hy','Ix','Iy','Jx','Jy','Kx','Ky']
+    positionList = []
+    positionValue = []
+    df_anal_file = ''
+    case = ''
+    result = ''
+    body = ''
+    varstart = 0
+    PI = np.pi
+    saveCSVNum = 100
+    sampleNum = 10000
+
+
+    df, equations = TXT2CSV(file)
+    df, column, varstart = VarList(df)
+    newcolumn = column
+    newcolumn.append('Output')
+
+    for indexrow, row in df.iterrows():
+        df_case_file = path + '\\' + filename + '_' + str(indexrow) + '.csv'
+        df_case_position_file = path + '\\' + filename + '_' + str(indexrow) + '_position' + '.csv'
+        df_case_position_png = path + '\\' + filename + '_' + str(indexrow) + '_position' + '.png'
+        df_case = pd.DataFrame(columns=newcolumn)
+        start = time.time()
+
+        for i in range(sampleNum):
+            newcase = []
+            for idx, value in enumerate(row):
+                value = float(row[idx])
+                if idx >= varstart:
+                    value = round(np.random.randint(0, 100)/100 * value * 2 - value, 2)
+                elif idx < varstart:
+                    value = round(value, 2)
+                newcase.append(value)
+                globals()[column[idx]] = round(value, 2)
+            # newcase = row.to_list()
+
+            Execflag = True
+            Execflag2 = True
+            flag = ''
+            flag2 = ''
+            for eq in equations:
+                result, body, flag, flag2 = SplitEquation(eq)
+                body = Change2NUMPY(body)
+
+                if flag == 'N':
+                    globals()[result] = round(eval(body), 2)
+                elif flag == 'I':
+                    Execflag = eval(body)
+                elif flag == 'E':
+                    if Execflag == True:
+                        Execflag = False
+                    elif Execflag == False:
+                        Execflag = True
+                elif flag == 'T':
+                    if flag2 == 'I':
+                        Execflag2 = eval(body)
+                    elif flag2 == 'E':
+                        if Execflag2 == True:
+                            Execflag2 = False
+                        elif Execflag2 == False:
+                            Execflag2 = True
+                    else:
+                        if Execflag == True and Execflag2 == True:
+                            globals()[result] = round(eval(body), 2)
+                        else:
+                            Execflag2 = True
+
+                if result in positions:
+                    if result not in positionList:
+                        if i == 0:
+                            positionList.append(result)
+
+            positionList.sort()
+            positionValue = []
+            for posit in positionList:
+                positionValue.append(globals()[posit])
+
+            newcase.append(Output)
+            df_case.loc[i] = newcase
+
+            if i == 0:
+                df_case.to_csv(df_case_file, mode='w')
+                df_case = pd.DataFrame(columns=newcolumn)
+                df_case_position = pd.DataFrame(columns=positionList)
+                df_case_position.to_csv(df_case_position_file, mode='w')
+                df_case_position.loc[i] = positionValue
+            elif i % saveCSVNum == 0:
+                df_case.to_csv(df_case_file, mode='a', header=False)
+                df_case = pd.DataFrame(columns=newcolumn)
+                df_case_position.loc[i] = positionValue
+                df_case_position.to_csv(df_case_position_file, mode='a', header=False)
+                df_case_position = pd.DataFrame(columns=positionList)
+                # print('to_csv')
+            elif i == sampleNum-1:
+                df_case.to_csv(df_case_file, mode='a', header=False)
+                df_case_position.loc[i] = positionValue
+                df_case_position.to_csv(df_case_position_file, mode='a', header=False)
+                # print('to_csv')
+                print(f'Margin list file \'{df_case_file}\' is generated')
+                print(f'Generation time : {time.time() - start}')
+            else:
+                df_case_position.loc[i] = positionValue
+
+
+        # df_case_position.to_csv(df_case_position_file, mode='w')
+        # df_case_position = df_case_position.reindex(columns=positionList)
+        df_case_position = pd.read_csv(df_case_position_file, index_col=0)
+        DrawPosition(df_case_position, positionList, df_case_position_png)
+
+        # sampleNum case 당 처리할 명령어
+        df_case = pd.read_csv(df_case_file)
+        df_case = df_case.sort_values(by=df_case.columns[len(df.columns)], ignore_index=True)
+        print(f'Execution time : {time.time() - start}')
+
+
+        pngfile = path + '\\' + filename + '_' + str(indexrow) + '_' + str(sampleNum) + '.png'
+        DrawHisto(pngfile, df_case['Output'])
+        print(f'Png file \'{pngfile}\' is generated')
+
+        df_anal_column, df_anal_line = AnalMargin(df_case, sampleNum)
+        df_anal_column.insert(0, 'sampleNum')
+        df_anal_line.insert(0, sampleNum)
+
+        if indexrow == 1:
+            df_anal = pd.DataFrame(columns=df_anal_column)
+            df_anal.loc[indexrow] = df_anal_line
+        else:
+            df_anal.loc[indexrow] = df_anal_line
+
+
+
+    # input file당 처리할 명령어
+    df_merged = pd.concat([df, df_anal], axis=1)
+    df_anal_file = path + '\\' + filename + '_anal.csv'
+    df_merged.to_csv(df_anal_file)
+    print(f'Analysis file \'{df_anal_file}\' is generated')
