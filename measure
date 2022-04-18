@@ -1,0 +1,686 @@
+import numpy as np
+from math import *
+from random import *
+from scipy.optimize import fsolve
+import scipy as sp
+PI = np.pi
+
+
+def Min(A, B):
+    if A <= B:
+        result = A
+    elif A > B:
+        result = B
+    return result
+
+
+
+def Max(A, B):
+    if A >= B:
+        result = A
+    elif A < B:
+        result = B
+    return result
+
+# A to B space calculation
+# # @jit(nopython=True, cache=True)
+def AtoB(Ax, Ay, Bx, By):
+    space = ((Ax - Bx) ** 2 + (Ay - By) ** 2) ** (0.5)
+    return space
+
+
+# Line-AB to C space calculation in 2D
+# # @jit(nopython=True, cache=True)
+def LineABtoC(Ax, Ay, Bx, By, Cx, Cy):
+    vE0 = np.array((Bx - Ax, By - Ay))
+    vAC = np.array((Ax - Cx, Ay - Cy))
+    a = np.dot(vE0, vE0)
+    b = np.dot(vE0, vAC)
+    c = np.dot(vAC, vAC)
+    # Q(s) = as^2+2bs+c
+    # Q'(s)/2 = as+b
+    # Q('s_bar) = 0 when s_bar = -b/a
+    if b >= 0:
+        s = 0
+    elif -b >= a:
+        s = 1
+    else:
+        s = -b / a
+    space = (a * s * s + 2 * b * s + c) ** 0.5
+    return space
+
+
+# Line-AB to C space calculation in 3D
+# # @jit(nopython=True, cache=True)
+def LineABtoC_in_3D(Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz):
+    vE0 = np.array((Bx - Ax, By - Ay, Bz - Az))
+    vAC = np.array((Ax - Cx, Ay - Cy, Az - Cz))
+    a = np.dot(vE0, vE0)
+    b = np.dot(vE0, vAC)
+    c = np.dot(vAC, vAC)
+    # Q(s) = as^2+2bs+c
+    # Q'(s)/2 = as+b
+    # Q('s_bar) = 0 when s_bar = -b/a
+    if b >= 0:
+        s = 0
+    elif -b >= a:
+        s = 1
+    else:
+        s = -b / a
+    space = (a * s * s + 2 * b * s + c) ** 0.5
+    return space
+
+
+# ARC-AB to C space calculation
+# # @jit(nopython=True, cache=True)
+def ArcABtoC(Ax, Ay, Bx, By, Cx, Cy, R):
+    # By > Ay 인 경우 A, B 위치 swap (항상 Ay > By가 되도록)
+    if By > Ay:
+        Bx_old = Bx
+        By_old = By
+        Bx = Ax
+        By = Ay
+        Ax = Bx_old
+        Ay = By_old
+    temp1 = AtoB(Ax, Ay, Bx, By) * 0.5
+    temp2 = (R ** 2 - temp1 ** 2) ** (0.5)
+    cos_theta = (Ay - By) / (2 * temp1)
+    sin_theta = -(Ax - Bx) / (2 * temp1)
+    Cx_new = cos_theta * (2 * Cx - Ax - Bx) * 0.5 + sin_theta * (2 * Cy - Ay - By) * 0.5
+    Cy_new = -sin_theta * (2 * Cx - Ax - Bx) * 0.5 + cos_theta * (2 * Cy - Ay - By) * 0.5
+    Ox_new = -temp2
+    Oy_new = 0
+    alpha = np.arctan2(temp1, temp2)
+    beta = np.arctan2(Cy_new, Cx_new)
+    if abs(beta) < alpha and Cx_new > -temp2:
+        space = abs(R - AtoB(Cx_new, Cy_new, Ox_new, Oy_new))
+    else:
+        space = min(AtoB(Cx_new, Cy_new, 0, temp1), AtoB(Cx_new, Cy_new, 0, -temp1))
+    return space
+
+
+# intersection of circle & rectangle
+# center of circle should be origin
+# # @jit(nopython=True, cache=True)
+def circle_rect_intersection(r, left_bot_x, left_bot_y, right_top_x, right_top_y):
+    N = 1000
+    left_x_boundary = max(left_bot_x, -r)
+    right_x_boundary = min(right_top_x, r)
+    dx = (right_x_boundary - left_x_boundary) / float(N)
+    x = left_x_boundary
+    area = 0
+    for i_x in range(N - 1):
+        x += dx
+        area += dx * (min(right_top_y, (r ** 2 - x ** 2) ** 0.5) - max(left_bot_y, -(r ** 2 - x ** 2) ** 0.5))
+    return area
+
+
+# intersection of ellipse & rectangle
+# center of ellipse should be origin
+# @jit(nopython=True, cache=True)
+def ellipse_rect_intersection(ellipse_radius_x, ellipse_radius_y, left_bot_x, left_bot_y, right_top_x, right_top_y):
+    N = 1000
+    a = ellipse_radius_x
+    b = ellipse_radius_y
+    left_x_boundary = max(left_bot_x, -a)
+    right_x_boundary = min(right_top_x, a)
+    dx = (right_x_boundary - left_x_boundary) / float(N)
+    x = left_x_boundary
+    area = 0
+    for i_x in range(N - 1):
+        x += dx
+        area += dx * (min(right_top_y, (((a ** 2) * (b ** 2) - (b ** 2) * (x ** 2)) / a ** 2) ** 0.5) - max(left_bot_y,
+                                                                                                            -(((
+                                                                                                                           a ** 2) * (
+                                                                                                                           b ** 2) - (
+                                                                                                                           b ** 2) * (
+                                                                                                                           x ** 2)) / a ** 2) ** 0.5))
+    return area
+
+
+# Monte-Carlo area estimation - one of case functions
+# @jit(nopython=True, cache=True)
+def is_in_circle(x, y, r):
+    if x ** 2 + y ** 2 < r ** 2:
+        return True
+    else:
+        return False
+
+
+# Monte-Carlo area estimation - main function
+# @jit(nopython=True, cache=True)
+def MC_area_estimate(left_bot_x, left_bot_y, right_top_x, right_top_y, case_func, *args):
+    N = 100000
+    area = 0
+    total_area = (right_top_x - left_bot_x) * (right_top_y - left_bot_y)
+    x_set = uniform(left_bot_x, right_top_x, N)
+    y_set = uniform(left_bot_y, right_top_y, N)
+    for x, y in zip(x_set, y_set):
+        if case_func(x, y, *args):
+            area += 1
+    area = (area / float(N)) * total_area
+    return area
+
+
+# Calculate x coordinate of intersection point of ellipse and line
+# @jit(nopython=True, cache=True)
+def ellipse_line_intersection_x(ellipse_origin_x, ellipse_origin_y, ellipse_radius_x, ellipse_radius_y, line_x1,
+                                line_y1, line_x2, line_y2, point_position):
+    # 타원 중심으로 원점 이동
+    u1 = line_x1 - ellipse_origin_x
+    v1 = line_y1 - ellipse_origin_y
+    u2 = line_x2 - ellipse_origin_x
+    v2 = line_y2 - ellipse_origin_y
+    # 직선 위의 점 매개변수화 (0<=s<=1 인 경우 선분 위)
+    # x = u1 + s*(u2-u1)
+    # y = v1 + s*(v2-v1)
+    # 타원-직선 교점 : s에 대한 연립방정식 계수
+    A = (ellipse_radius_y ** 2) * (u2 - u1) ** 2 + (ellipse_radius_x ** 2) * (v2 - v1) ** 2
+    B = (ellipse_radius_y ** 2) * u1 * (u2 - u1) + (ellipse_radius_x ** 2) * v1 * (v2 - v1)
+    C = (ellipse_radius_y ** 2) * (u1 ** 2) + (ellipse_radius_x ** 2) * (v1 ** 2) - (
+                ellipse_radius_x * ellipse_radius_y) ** 2
+    det = B ** 2 - A * C
+    # 직선과의 교점 미존재
+    if det < 0:
+        return None
+    # 직선과 교점 존재
+    else:
+        s1 = (-B - (B ** 2 - A * C) ** 0.5) / A
+        s2 = (-B + (B ** 2 - A * C) ** 0.5) / A
+        # 선분 바깥에 s1 교점 존재
+        if abs(s1) > 1:
+            # 선분 바깥에 s2 교점 존재
+            if abs(s2) > 1:
+                return None
+            # 선분 상에 s2 교점 존재
+            else:
+                x = u1 + s2 * (u2 - u1)
+        # 선분 상에 s1 교점 존재
+        else:
+            # 선분 바깥에 s2 교점 존재
+            if abs(s2) > 1:
+                x = u1 + s1 * (u2 - u1)
+            # 선분 상에 s2 교점 존재
+            else:
+                if point_position == 'L':
+                    x = u1 + s1 * (u2 - u1)
+                elif point_position == 'R':
+                    x = u1 + s2 * (u2 - u1)
+    # 원점 원복
+    x += ellipse_origin_x
+    return x
+
+
+# Calculate y coordinate of intersection point of ellipse and line
+# @jit(nopython=True, cache=True)
+def ellipse_line_intersection_y(ellipse_origin_x, ellipse_origin_y, ellipse_radius_x, ellipse_radius_y, line_x1,
+                                line_y1, line_x2, line_y2, point_position):
+    # 타원 중심으로 원점 이동
+    u1 = line_x1 - ellipse_origin_x
+    v1 = line_y1 - ellipse_origin_y
+    u2 = line_x2 - ellipse_origin_x
+    v2 = line_y2 - ellipse_origin_y
+    # 직선 위의 점 매개변수화 (0<=s<=1 인 경우 선분 위)
+    # x = u1 + s*(u2-u1)
+    # y = v1 + s*(v2-v1)
+    # 타원-직선 교점 : s에 대한 연립방정식 계수
+    A = (ellipse_radius_y ** 2) * (u2 - u1) ** 2 + (ellipse_radius_x ** 2) * (v2 - v1) ** 2
+    B = (ellipse_radius_y ** 2) * u1 * (u2 - u1) + (ellipse_radius_x ** 2) * v1 * (v2 - v1)
+    C = (ellipse_radius_y ** 2) * (u1 ** 2) + (ellipse_radius_x ** 2) * (v1 ** 2) - (
+                ellipse_radius_x * ellipse_radius_y) ** 2
+    det = B ** 2 - A * C
+    # 직선과의 교점 미존재
+    if det < 0:
+        return None
+    # 직선과 교점 존재
+    else:
+        s1 = (-B - (B ** 2 - A * C) ** 0.5) / A
+        s2 = (-B + (B ** 2 - A * C) ** 0.5) / A
+        # 선분 바깥에 s1 교점 존재
+        if abs(s1) > 1:
+            # 선분 바깥에 s2 교점 존재
+            if abs(s2) > 1:
+                return None
+            # 선분 상에 s2 교점 존재
+            else:
+                y = v1 + s2 * (v2 - v1)
+        # 선분 상에 s1 교점 존재
+        else:
+            # 선분 바깥에 s2 교점 존재
+            if abs(s2) > 1:
+                y = v1 + s1 * (v2 - v1)
+            # 선분 상에 s2 교점 존재
+            else:
+                if point_position == 'L':
+                    y = v1 + s1 * (v2 - v1)
+                elif point_position == 'R':
+                    y = v1 + s2 * (v2 - v1)
+    # 원점 원복
+    y += ellipse_origin_y
+    return y
+
+
+# Calculate intersection point of line AB and line y=Cy
+# @jit(nopython=True, cache=True)
+def LineAB_Cy_intersection(Ax, Ay, Bx, By, Cy):
+    Cx = Ax + (Cy - Ay) * (Bx - Ax) / (By - Ay)
+    return Cx
+
+
+# Calculate intersection point of line AB and line x=Cx
+# @jit(nopython=True, cache=True)
+def LineAB_Cx_intersection(Ax, Ay, Bx, By, Cx):
+    Cy = Ay + (Cx - Ax) * (By - Ay) / (Bx - Ax)
+    return Cy
+
+
+# Calculate min. distance between point and triangle in 3D
+# Reference : http://edm2.sec.samsung.net/cc/link/verLink/162847358018904918/1
+# @jit(nopython=True, cache=True)
+def TriangleABC_to_PointP_distance_in_3D(Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, Px, Py, Pz):
+    vE0 = np.array((Cx - Bx, Cy - By, Cz - Bz))
+    vE1 = np.array((Ax - Bx, Ay - By, Az - Bz))
+    vB = np.array((Bx, By, Bz))
+    vP = np.array((Px, Py, Pz))
+    vBP = vB - vP
+    a = np.dot(vE0, vE0)
+    b = np.dot(vE0, vE1)
+    c = np.dot(vE1, vE1)
+    d = np.dot(vE0, vBP)
+    e = np.dot(vE1, vBP)
+    f = np.dot(vBP, vBP)
+
+    s = b * e - c * d
+    t = b * d - a * e
+    det = a * c - b * b
+
+    if s + t <= det:
+        if s < 0:
+            if t < 0:
+                # region 4
+                # GradQ(s,t)/2 = (as+bt+d, bs+ct+e)
+                # (1,0)*GradQ(0,0)/2 = (1,0)*(d,e) = d
+                # (0,1)*GradQ(0,0)/2 = (0,1)*(d,e) = e
+                # minimum on edge t=0 if (1,0)*GradQ(0,0)<0; otherwise, minimum on edge s=0
+                if d < 0:  # minimum on edge t=0 with s>0
+                    # F(s) = Q(s,0) = as^2+2ds+f
+                    # F'(s)/2 = as+d
+                    # F'(s_bar) =0 when s_bar = -d/a
+                    t = 0
+                    if -d >= a:
+                        s = 1
+                    else:
+                        s = -d / a
+                else:  # minimum on edge s=0
+                    # F(t) = Q(0,t) = ct^2+2et+f
+                    # F'(t)/2 = ct+e
+                    # F'(t_bar) =0 when t_bar = -e/c
+                    s = 0
+                    if e >= 0:
+                        t = 0
+                    elif -e >= c:
+                        t = 1
+                    else:
+                        t = -e / c
+            else:
+                # region 3
+                # F(t) = Q(0,t) = ct^2+2et+f
+                # F'(t)/2 = ct+e
+                # F'(t_bar) = 0 when t_bar = -e/c
+                s = 0
+                if e >= 0:
+                    t = 0
+                elif -e >= c:
+                    t = 1
+                else:
+                    t = -e / c
+        elif t < 0:
+            # region 5
+            # F(s) = Q(s,0) = as^2+2ds+f
+            # F'(s)/2 = as+d
+            # F'(s_bar) = 0 when s_bar = -d/a
+            t = 0
+            if d >= 0:
+                s = 0
+            elif -d >= a:
+                s = 1
+            else:
+                s = -d / a
+        else:
+            # region 0
+            s /= det
+            t /= det
+    else:
+        if s < 0:
+            # region 2
+            # GradQ(s,t)/2 = (as+bt+d, bs+ct+e)
+            # (1,-1)*GradQ(0,1)/2 = (1,-1)*(b+d,c+e) = (b+d)-(c+e)
+            # (0,-1)*GradQ(0,1)/2 = (0,-1)*(b+d,c+e) = -(c+e)
+            # minimum on edge s+t=1 if (1,-1)*GradQ(0,1)<0; otherwise, minimum on edge s=0
+            tmp0 = b + d
+            tmp1 = c + e
+            if tmp1 > tmp0:  # minimum on edge s+t=1 with s>0
+                # F(s) = Q(s,1-s) = (a-2b+c)s^2+2((b+d)-(c+e))s+(c+2e+f)
+                # F'(s)/2 = (a-2b+c)s+((b+d)-(c+e))
+                # F'(s_bar) = 0 when s_bar = ((c+e)-(b+d))/(a-2b+c)
+                # a-2b+c>0, so only the sign of (c+e)-(b+d) must be analyzed
+                numer = tmp1 - tmp0
+                denom = a - 2 * b + c
+                if numer >= denom:
+                    s = 1
+                else:
+                    s = numer / denom
+                t = 1 - s
+            else:  # minimum on edge s=0 with t<=1
+                # F(t) = Q(0,t) = ct^2+2et+f
+                # F'(t)/2 = ct+e
+                # F'(t_bar) =0 when t_bar = -e/c
+                s = 0
+                if tmp1 <= 0:
+                    t = 1
+                elif e >= 0:
+                    t = 0
+                else:
+                    t = -e / c
+        elif t < 0:
+            # region 6
+            # GradQ(s,t)/2 = (as+bt+d, bs+ct+e)
+            # (-1,1)*GradQ(1,0)/2 = (-1,1)*(a+d,b+e) = (b+e)-(a+d)
+            # (-1,0)*GradQ(1,0)/2 = (-1,0)*(a+d,b+e) = -(a+d)
+            # minimum on edge s+t=1 if (-1,1)*GradQ(1,0)<0; otherwise, minimum on edge t=0
+            tmp0 = b + e
+            tmp1 = a + d
+            if tmp1 > tmp0:  # minimum on edge s+t=1 with t>0
+                # F(t) = Q(1-t,t) = (a-2b+c)t^2+2((b+e)-(a+d))t+(a+2d+f)
+                # F'(t)/2 = (a-2b+c)t+((b+e)-(a+d))
+                # F'(t_bar) = 0 when t_bar = ((a+d)-(b+e))/(a-2b+c)
+                # a-2b+c>0, so only the sign of (a+d)-(b+e) must be analyzed
+                numer = tmp1 - tmp0
+                denom = a - 2 * b + c
+                if numer >= denom:
+                    t = 1
+                else:
+                    t = numer / denom
+                s = 1 - t
+            else:  # minimum on edge t=0 with s<=1
+                # F(s) = Q(s,0) = as^2+2ds+f
+                # F'(s)/2 = as+d
+                # F'(s_bar) =0 when s_bar = -d/a
+                t = 0
+                if tmp1 <= 0:
+                    s = 1
+                elif d >= 0:
+                    s = 0
+                else:
+                    s = -d / a
+        else:
+            # region 1
+            # F(s) = Q(s, 1-s) = (a-2b+c)s^2+2((b+d)-(c+e))s+(c+2e+f)
+            # F'(s)/2 = (a-2b+c)s+((b+d)-(c+e))
+            # F'(s_bar) = 0 when s_bar = ((c+e)-(b+d))/(a-2b+c)
+            # a-2b+c>0, so only the sign of (c+e)-(b+d) must be analyzed
+            numer = (c + e) - (b + d)
+            if numer <= 0:
+                s = 0
+            else:
+                denom = a - 2 * b + c
+                if numer >= denom:
+                    s = 1
+                else:
+                    s = numer / denom
+            t = 1 - s
+
+    min_dist = (a * s * s + 2 * b * s * t + c * t * t + 2 * d * s + 2 * e * t + f) ** 0.5
+    return min_dist
+
+
+# Circle to Circle min distance
+# @jit(nopython=True, cache=True)
+def circle_to_circle_distance(Ax, Ay, r_a, Bx, By, r_b):
+    return max(AtoB(Ax, Ay, Bx, By) - r_a - r_b, 0)
+
+
+# Ellipse to Point min distance
+# @jit(nopython=True, cache=True)
+def ellipse_to_point_distance_old(Ax, Ay, r_a, r_b, Bx, By):
+    # Point를 원점으로 좌표이동
+    Ax -= Bx
+    Ay -= By
+
+    # Ellipse 상 최적점 (X, Y)을 찾기 위한 방정식
+    # eq1 : ellipse 접선 vector와 (X,Y) vector가 수직
+    # eq2 : (X,Y)가 ellipse 상에 존재
+    def equations(vars):
+        X, Y = vars
+        eq1 = (r_a ** 2 - r_b ** 2) * X * Y - (r_a ** 2) * Ay * X + (r_b ** 2) * Ax * Y
+        eq2 = (r_b ** 2) * (X ** 2) + (r_a ** 2) * (Y ** 2) - 2 * Ax * (r_b ** 2) * X - 2 * Ay * (r_a ** 2) * Y + (
+                    r_b ** 2) * (Ax ** 2) + (r_a ** 2) * (Ay ** 2) - (r_a * r_b) ** 2
+        return (eq1, eq2)
+
+    # 방정식 풀이용 초기값 설정을 위한 ellipse의 effective radius - circle로 가정하여 초기값 지정
+    r_eff = (r_a * r_b) ** 0.5
+    initial_guess_x = Ax - r_eff * Ax / (Ax ** 2 + Ay ** 2) ** 0.5
+    if Ay >= 0:
+        initial_guess_y = Ay - (r_eff ** 2 - (initial_guess_x - Ax) ** 2) ** 0.5
+    else:
+        initial_guess_y = Ay + (r_eff ** 2 - (initial_guess_x - Ax) ** 2) ** 0.5
+    # 방정식 풀이
+    X, Y = fsolve(equations, (initial_guess_x, initial_guess_y))
+    return (X ** 2 + Y ** 2) ** 0.5
+
+
+# Simple Method for Distance to Ellipse
+# https://wet-robots.ghost.io/simple-method-for-distance-to-ellipse/
+# @jit(nopython=True, cache=True)
+def ellipse_to_point_distance(Ax, Ay, r_a, r_b, Bx, By):
+    N_iter = 5  # number of iteration
+    Bx -= Ax
+    By -= Ay
+    Bx = abs(Bx)
+    By = abs(By)
+    t = PI / 4
+    for x in range(0, N_iter):
+        x = r_a * cos(t)
+        y = r_b * sin(t)
+        ex = (r_a * r_a - r_b * r_b) * cos(t) ** 3 / r_a
+        ey = (r_b * r_b - r_a * r_a) * sin(t) ** 3 / r_b
+        rx = x - ex
+        ry = y - ey
+        qx = Bx - ex
+        qy = By - ey
+        r = hypot(ry, rx)
+        q = hypot(qy, qx)
+        delta_c = r * asin((rx * qy - ry * qx) / (r * q))
+        delta_t = delta_c / sqrt(r_a * r_a + r_b * r_b - x * x - y * y)
+        t += delta_t
+        t = min(PI / 2, max(0, t))
+    space = hypot(Bx - x, By - y)
+    return space
+
+
+# Ellipse to Circle min distance
+# @jit(nopython=True, cache=True)
+def ellipse_to_circle_distance(Ax, Ay, r_a, r_b, Bx, By, r):
+    # 타원상 점들과 원중심 간의 최소 거리 구함
+    ellipse_to_circle_center = ellipse_to_point_distance(Ax, Ay, r_a, r_b, Bx, By)
+    # 위에서 구한 최소거리에서 원 반지름 빼면, 타원과 원 간의 최소거리
+    return max(ellipse_to_circle_center - r, 0)
+
+
+# Ellipse to line min distance
+# @jit(nopython=True, cache=True)
+def ellipse_to_line_distance(Ax, Ay, r_a, r_b, Bx, By, Cx, Cy):
+    Bx -= Ax
+    By -= Ay
+    Cx -= Ax
+    Cy -= Ay
+    alpha = (Cy - By) / (Cx - Bx)  # 직선BC의 기울기
+    l = r_b ** 2 + (r_a * alpha) ** 2
+    m = 2 * (r_a ** 2) * alpha * (-alpha * Bx + By)
+    n = (r_a ** 2) * (-alpha * Bx + By + r_b) * (-alpha * Bx + By - r_b)
+    Det = m ** 2 - 4 * l * n
+    if Det >= 0:
+        # 직선BC와 ellipse간 교점 존재
+        if ((Bx / r_a) ** 2 + (By / r_b) ** 2 - 1) * ((Cx / r_a) ** 2 + (Cy / r_b) ** 2 - 1) < 0:
+            # B, C 중 한 포인트는 ellipse 내에, 나머지 포인트를 ellipse 밖에 존재, 선분BC와 ellipse간 교점 발생
+            return 0
+        elif (Bx / r_a) ** 2 + (By / r_b) ** 2 - 1 < 0 and (Cx / r_a) ** 2 + (Cy / r_b) ** 2 - 1 < 0:
+            # B, C 두 포인트 모두 ellipse 내에 존재할 경우
+            S1 = ellipse_to_point_distance(0, 0, r_a, r_b, Bx, By)
+            S2 = ellipse_to_point_distance(0, 0, r_a, r_b, Cx, Cy)
+            return min(S1, S2)
+        else:
+            # B, C 두 포인트 모두 ellipse 밖에 존재할 경우
+            if Bx * Cx < 0:
+                # B, C가 ellipse 양옆에 각각 존재, 선분BC와 ellipse간 교점 발생
+                return 0
+            else:
+                # B, C가 ellipse 한쪽에 존재
+                S1 = ellipse_to_point_distance(0, 0, r_a, r_b, Bx, By)
+                S2 = ellipse_to_point_distance(0, 0, r_a, r_b, Cx, Cy)
+                return min(S1, S2)
+    else:
+        # 직선BC와 ellipse간 교점 미발생
+        beta = r_b / (alpha * r_a)
+        x_intercept = Bx - By * (Bx - Cx) / (By - Cy)  # 직선BC의 x절편
+        if x_intercept > 0:
+            # x절편이 양수인 경우, ellipse 상 최적점 R의 좌표 (R에서의 접선의 기울기=직선 BC의 기울기)
+            Rx = r_a / (1 + beta ** 2) ** 0.5
+            Ry = -beta * r_b / (1 + beta ** 2) ** 0.5
+        else:
+            # x절편이 음수인 경우, ellipse 상 최적점 R의 좌표 (R에서의 접선의 기울기=직선 BC의 기울기)
+            Rx = -r_a / (1 + beta ** 2) ** 0.5
+            Ry = +beta * r_b / (1 + beta ** 2) ** 0.5
+        # 직선BC를 매개변수 s로 표현 : vector(P) = vector(B) + s*[vector(C)-vector(B)]
+        # Ellipse상 최적점 R에서 접선에 수직 방향 직선을 긋고, 직선BC와의 교점에 해당하는 s값 계산
+        s = ((Rx - Bx) * (Cx - Bx) + (Ry - By) * (Cy - By)) / ((Cx - Bx) ** 2 + (Cy - By) ** 2)
+        if s < 0:
+            # s값이 음수, 교점이 선분 BC 바깥에 존재, 최소거리는 Point B to ellipse
+            space = ellipse_to_point_distance(0, 0, r_a, r_b, Bx, By)
+        elif s > 1:
+            # s값이 1보다 큼, 교점이 선분 BC 바깥에 존재, 최소거리는 Point C to ellipse
+            space = ellipse_to_point_distance(0, 0, r_a, r_b, Cx, Cy)
+        else:
+            # 교점P가 선분 BC 내에 존재, 최소거리는 Point P (of line) to Point R (of ellipse)
+            Px = Bx + s * (Cx - Bx)
+            Py = By + s * (Cy - By)
+            space = AtoB(Px, Py, Rx, Ry)
+        return space
+
+
+# 타원과 타원간 최소거리 계산
+# @jit(nopython=True, cache=True)
+def ellipse_to_ellipse_distance_old(Ax, Ay, r_a, r_b, Bx, By, r_c, r_d):
+    # 좌표 이동 - (Ax, Ay)을 원점으로
+    Bx -= Ax
+    By -= Ay
+
+    # 2nd 타원을 1사분면으로 대칭이동 (타원간 거리는 불변)
+    Bx = np.abs(Bx)
+    By = np.abs(By)
+
+    # 타원식 계수 계산
+    # a*x^2+b*y^2+c*x*y+d*x+e*y+f=0, e=[a, b, c, d, e, f]
+    e1 = [r_b * r_b, r_a * r_a, 0, 0, 0, -r_a * r_a * r_b * r_b]
+    e2 = [r_d * r_d, r_c * r_c, 0, -2 * r_d * r_d * Bx, -2 * r_c * r_c * By,
+          r_d * r_d * Bx * Bx + r_c * r_c * By * By - r_c * r_c * r_d * r_d]
+
+    # 초기값 계산
+    # 두 타원의 중심을 이은 선분과 각 타원간 교점을 초기값으로 함
+    theta = atan2(By, Bx)
+    init_guess_e1_x = r_a * cos(theta)
+    init_guess_e1_y = r_b * sin(theta)
+    init_guess_e2_x = r_c * cos(pi + theta) + Bx
+    init_guess_e2_y = r_d * sin(pi + theta) + By
+    init_guess = np.array([init_guess_e1_x, init_guess_e1_y, init_guess_e2_x, init_guess_e2_y])
+
+    # 최적화할 목적 함수
+    # 인수 x = (1st ellipse상 x좌표, 1st ellipse상 y좌표, 2nd ellipse상 x좌표, 2nd ellipse상 y좌표)
+    distance2e = lambda x: (x[0] - x[2]) ** 2 + (x[1] - x[3]) ** 2
+
+    # 제약 함수 - 타원식
+    # 인수 x = (1st ellipse상 x좌표, 1st ellipse상 y좌표, 2nd ellipse상 x좌표, 2nd ellipse상 y좌표)
+    e1const = lambda x: e1[0] * (x[0] ** 2) + e1[1] * (x[1] ** 2) + e1[2] * (x[0] * x[1]) + e1[3] * x[0] + e1[4] * x[
+        1] + e1[5]
+    e2const = lambda x: e2[0] * (x[2] ** 2) + e2[1] * (x[3] ** 2) + e2[2] * (x[2] * x[3]) + e2[3] * x[2] + e2[4] * x[
+        3] + e2[5]
+
+    rst = sp.fmin_slsqp(distance2e, init_guess, eqcons=[e1const, e2const], iprint=-1, iter=100)
+    space = distance2e(rst) ** 0.5
+    return space
+
+
+# 타원과 타원간 최소거리 계산
+# https://wet-robots.ghost.io/simple-method-for-distance-to-ellipse/
+# @jit(nopython=True, cache=True)
+def ellipse_to_ellipse_distance(Ax, Ay, r_a, r_b, Bx, By, r_c, r_d):
+    N_iter = 10  # number of iteration
+    Bx -= Ax
+    By -= Ay
+    Bx = abs(Bx)
+    By = abs(By)
+    t = PI / 4
+    u = t + PI
+    for x in range(0, N_iter):
+        x = r_a * cos(t)
+        y = r_b * sin(t)
+        ex = (r_a * r_a - r_b * r_b) * cos(t) ** 3 / r_a
+        ey = (r_b * r_b - r_a * r_a) * sin(t) ** 3 / r_b
+        rx = x - ex
+        ry = y - ey
+
+        X = r_c * cos(u) + Bx
+        Y = r_d * sin(u) + By
+        Ex = (r_c * r_c - r_d * r_d) * cos(u) ** 3 / r_c + Bx
+        Ey = (r_d * r_d - r_c * r_c) * sin(u) ** 3 / r_d + By
+        Rx = X - Ex
+        Ry = Y - Ey
+
+        qx = X - ex
+        qy = Y - ey
+        r = hypot(ry, rx)
+        q = hypot(qy, qx)
+
+        Qx = x - Ex
+        Qy = y - Ey
+        R = hypot(Ry, Rx)
+        Q = hypot(Qy, Qx)
+
+        delta_c = r * asin((rx * qy - ry * qx) / (r * q))
+        delta_t = delta_c / sqrt(r_a * r_a + r_b * r_b - x * x - y * y)
+        t += delta_t
+        t = min(PI * 0.5, max(0, t))
+
+        Delta_c = R * asin((Rx * Qy - Ry * Qx) / (R * Q))
+        delta_u = Delta_c / sqrt(r_c * r_c + r_d * r_d - (X - Bx) * (X - Bx) - (Y - By) * (Y - By))
+        u += delta_u
+        u = min(1.5 * PI, max(PI, u))
+    space = hypot(X - x, Y - y)
+    return space
+
+
+# 2차 곡선 y = a(x-Ax)^2 + Ay 와 점(Bx, By) 간 최단거리 계산
+# @jit(nopython=True, cache=True)
+def q_curve_to_point_distance(Ax, Ay, a, Bx, By):
+    # 점(Bx, By)를 원점으로 이동
+    Ax -= Bx
+    Ay -= By
+
+    # 2차 곡선상 최적점 (X, Y)를 찾기 위한 방정식
+    def equations(vars):
+        X, Y = vars
+        # 미분 관계식 - 최적점 X, Y에서의 2차 함수 접선의 기울기 = -1/(원점-최적점간 기울기)
+        eq1 = -X / (2 * a * (X - Ax)) - Y
+        # (X, Y)가 2차 곡선 상의 점이어야 함
+        eq2 = a * (X - Ax) ** 2 - (Y - Ay)
+        return (eq1, eq2)
+
+    # Ax가 음수이면 초기값을 Ax보다 오른쪽값으로 설정 필요
+    if Ax < 0:
+        initial_guess_X = Ax + 10
+    # Ax가 양수이면 초기값을 Ax보다 왼쪽값으로 설정 필요
+    else:
+        initial_guess_X = Ax - 10
+    initial_guess_Y = a * 10 ** 2 + Ay
+    X, Y = fsolve(equations, (initial_guess_X, initial_guess_Y))
+    return (X ** 2 + Y ** 2) ** 0.5
