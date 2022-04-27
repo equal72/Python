@@ -1,0 +1,367 @@
+# from functions import *
+from measure import *
+import numpy as np
+
+
+class margin():
+    def __init__(self):
+        self.equations = []
+        self.parameters = []
+        # for i in enumerate(x):
+        #     self.parameters[i] = x[i]
+
+    def SplitEquation(self, list):
+        flag, flag2 = '', ''
+
+        if list[0] == ' ':
+            flag = 'T'
+            if 'if' in list:
+                result = 'IF'
+                body = list.strip('if ').strip(':')
+                flag2 = 'I'
+            elif 'else' in list:
+                result = 'ELSE'
+                body = ''
+                flag2 = 'E'
+            else:
+                eq = list.find('=')
+                result = list[:eq].strip()
+                body = list[eq + 1:].strip()
+        elif 'if' in list:
+            result = 'IF'
+            body = list.strip('if ').strip(':')
+            flag = 'I'
+        elif 'else' in list:
+            result = 'ELSE'
+            body = ''
+            flag = 'E'
+        else:
+            eq = list.find('=')
+            result = list[:eq].strip()
+            body = list[eq + 1:].strip()
+            flag = 'N'
+
+        return result, body, flag, flag2
+
+
+    def Change2NUMPY(self, str):
+        str = str.replace('tan(', 'np.tan(')
+        str = str.replace('sin(', 'np.sin(')
+        str = str.replace('cos(', 'np.cos(')
+        str = str.replace('tan(PI', 'tan(np.pi')
+        # str = str.replace('hypot', 'math.hypot')
+        # str = str.replace('uniform', 'random.uniform')
+
+        return str
+
+
+    def ChkParmaters(self, x):
+        if len(x) == len(self.parameters):
+            result = True
+        else:
+            result = False
+
+        return result
+
+
+    def f(self, x):
+        if self.ChkParmaters(x):
+            Execflag = True
+            Execflag2 = True
+            flag = ''
+            flag2 = ''
+            for i, value in enumerate(x):
+                globals()[self.parameters[i]] = value
+
+            for eq in self.equations:
+                result, body, flag, flag2 = self.SplitEquation(eq)
+                body = self.Change2NUMPY(body)
+
+                if flag == 'N':
+                    globals()[result] = round(eval(body), 2)
+                elif flag == 'I':
+                    Execflag = eval(body)
+                elif flag == 'E':
+                    if Execflag == True:
+                        Execflag = False
+                    elif Execflag == False:
+                        Execflag = True
+                elif flag == 'T':
+                    if flag2 == 'I':
+                        Execflag2 = eval(body)
+                    elif flag2 == 'E':
+                        if Execflag2 == True:
+                            Execflag2 = False
+                        elif Execflag2 == False:
+                            Execflag2 = True
+                    else:
+                        if Execflag == True and Execflag2 == True:
+                            globals()[result] = round(eval(body), 2)
+                        else:
+                            Execflag2 = True
+        else:
+            print('number of input x is not match with number of parameters')
+            # Output = 0
+
+        return Output
+
+
+
+class margin1(margin):
+    def __init__(self):
+        # CA TCD 산포
+        self.equations = [
+        'Ax = CPP / 2 - CA_SAC_TCD / 2 + CA_OVL + CA_CDU / 2 + CA_LER + CA_APT + CA_liner_thk + CA_liner_thk_var',
+        'Ay = H_SAC + H_SAC_var',
+        'Bx = MG_CD / 2 + HK_thk + Incoming_spacer_thk + PC_CDU / 2 + PC_LER + PC_PW + Incoming_spacer_thk_var',
+        'By = Ay',
+        'Cy = 9',
+        'x1 = Bx - Ax',
+        'if x1 > 0:',
+        '   Cx = Ax + SAC_coeff_a * (x1 ** 2) + SAC_coeff_b * x1 + SAC_coeff_c + CA_liner_thk + CA_liner_thk_var',
+        '   CA_slope_beta = CA_slope_beta_coeff_a * x1 + CA_slope_beta_coeff_b',
+        '   SAC_loss1 = SAC_loss1_coeff_a * x1 + SAC_loss1_coeff_b + SAC_loss_var',
+        '   SAC_loss2 = SAC_loss2_coeff_a * x1 + SAC_loss2_coeff_b + SAC_loss_var',
+        '   Dy = Ay - SAC_loss1',
+        '   Dx = Ax + (Ay - Dy) / tan(PI * CA_slope_beta / 180)',
+        '   Ey = Ay - SAC_loss2',
+        '   Ex = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        'else:',
+        '   Cx = Bx + CA_liner_thk + CA_liner_thk_var',
+        '   SAC_loss1 = 0',
+        '   SAC_loss2 = 0',
+        '   Dy = Ay',
+        '   Ey = Dy',
+        '   Dx = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        '   Ex = Dx',
+        'Fx = MG_CD / 2 + HK_thk_electrical + PC_CDU / 2 + PC_LER + PC_PW',
+        'Fy = H_MG + MG_climb + H_MG_var + MG_climb_var',
+        'Gy = CA_final_height + CA_final_height_var',
+        'if Ey > Gy:',
+        '    Gx = LineAB_Cy_intersection(Ex, Ey, Cx, Cy, Gy)',
+        'else:',
+        '    if Dy > Gy:',
+        '       Gx = LineAB_Cy_intersection(Dx, Dy, Ex, Ey, Gy)',
+        '    else:',
+        '       Gx = LineAB_Cy_intersection(Ax, Ay, Dx, Dy, Gy)',
+        'Output = Gx'
+        ]
+        self.parameters = [
+            'CPP','MG_CD','HK_thk','HK_thk_electrical','H_MG','MG_climb','Incoming_spacer_thk',
+            'H_SAC','CA_SAC_TCD','CA_liner_thk','CA_slope_alpha','CA_slope_beta_coeff_a',
+            'CA_slope_beta_coeff_b','SAC_coeff_a','SAC_coeff_b','SAC_coeff_c','SAC_loss1_coeff_a',
+            'SAC_loss1_coeff_b','SAC_loss2_coeff_a','SAC_loss2_coeff_b','CA_final_height','CA_OVL','CA_CDU',
+            'CA_LER','H_SAC_var','PC_CDU','PC_LER','PC_PW','Incoming_spacer_thk_var','H_MG_var','MG_climb_var',
+            'SAC_loss_var','CA_liner_thk_var','CA_APT','CA_final_height_var'
+        ]
+
+
+class margin2(margin):
+    # CA-CB short
+    def __init__(self):
+        self.equations = [
+        'Ax = CPP / 2 - CA_SAC_TCD / 2 + CA_OVL + CA_CDU / 2 + CA_LER + CA_APT + CA_liner_thk + CA_liner_thk_var',
+        'Ay = H_SAC + H_SAC_var',
+        'Bx = MG_CD / 2 + HK_thk + Incoming_spacer_thk + PC_CDU / 2 + PC_LER + PC_PW + Incoming_spacer_thk_var',
+        'By = Ay',
+        'Cy = 9',
+        'x1 = Bx - Ax',
+        'if x1 > 0:',
+        '    Cx = Ax + SAC_coeff_a * (x1 ** 2) + SAC_coeff_b * x1 + SAC_coeff_c + SAC_coeff_c_var + CA_liner_thk + CA_liner_thk_var',
+        '    CA_slope_beta = CA_slope_beta_coeff_a * x1 + CA_slope_beta_coeff_b',
+        '    SAC_loss1 = SAC_loss1_coeff_a * x1 + SAC_loss1_coeff_b + SAC_loss_var',
+        '    SAC_loss2 = SAC_loss2_coeff_a * x1 + SAC_loss2_coeff_b + SAC_loss_var',
+        '    Dy = Ay - SAC_loss1',
+        '    Dx = Ax + (Ay - Dy) / tan(PI * CA_slope_beta / 180)',
+        '    Ey = Ay - SAC_loss2',
+        '    Ex = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        'else:',
+        '    Cx = Bx + CA_liner_thk + CA_liner_thk_var',
+        '    SAC_loss1 = 0',
+        '    SAC_loss2 = 0',
+        '    Dy = Ay',
+        '    Ey = Dy',
+        '    Dx = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        '    Ex = Dx',
+        'Fx = MG_CD / 2 + HK_thk_electrical + PC_CDU / 2 + PC_LER + PC_PW',
+        'Fy = H_MG + MG_climb + H_MG_var + MG_climb_var',
+        'Gy = H_CA_final + H_CA_final_var',
+        'Hy = Gy - mCRCA + mCRCA_var',
+        'if Gy < Ey:',
+        '    Gx = LineAB_Cy_intersection(Ex, Ey, Cx, Cy, Gy) + CA_BM_thk + CA_BM_thk_var',
+        'else:',
+        '    if Gy < Dy:',
+        '        Gx = LineAB_Cy_intersection(Dx, Dy, Ex, Ey, Gy) + CA_BM_thk + CA_BM_thk_var',
+        '    else:',
+        '        Gx = LineAB_Cy_intersection(Ax, Ay, Dx, Dy, Gy) + CA_BM_thk + CA_BM_thk_var',
+        'if Hy < Ey:',
+        '    Hx = LineAB_Cy_intersection(Ex, Ey, Cx, Cy, Hy)',
+        'else:',
+        '    if Hy < Dy:',
+        '        Hx = LineAB_Cy_intersection(Dx, Dy, Ex, Ey, Hy)',
+        '    else:',
+        '        Hx = LineAB_Cy_intersection(Ax, Ay, Dx, Dy, Hy)',
+        'Jy = H_CB_total + H_CB_total_var',
+        'Jx = (CB_TCD + CB_CDU) / 2 + CBtoPC_OVL + CB_APT + H_CB_total_var / tan(PI * CB_slope / 180)',
+        'Ky = H_MG - MG_loss + H_MG_var + MG_loss_var',
+        'Kx = Jx - (Jy - Ky) / tan(PI * CB_slope / 180)',
+        'S1 = LineABtoC(Jx, Jy, Kx, Ky, Gx, Gy)',
+        'S2 = LineABtoC(Jx, Jy, Kx, Ky, Hx, Hy)',
+        'Output = Min(S1, S2)'
+        ]
+        self.parameters = [
+            'CPP',    'MG_CD',    'HK_thk',    'HK_thk_electrical',   'H_MG',    'MG_climb',    'Incoming_spacer_thk',    'H_SAC',
+            'CA_SAC_TCD',    'CA_liner_thk',    'CA_slope_alpha',    'CA_slope_beta_coeff_a',    'CA_slope_beta_coeff_b',
+            'SAC_coeff_a',    'SAC_coeff_b',    'SAC_coeff_c',    'SAC_loss1_coeff_a',    'SAC_loss1_coeff_b',    'SAC_loss2_coeff_a',
+            'SAC_loss2_coeff_b',    'H_CA_final',   'H_CB_total',    'CB_slope',    'MG_loss',    'CB_TCD',    'mCRCA',    'CA_BM_thk',
+            'CA_OVL',    'CA_CDU',    'CA_LER',    'H_SAC_var',    'PC_CDU',    'PC_LER',    'PC_PW',    'Incoming_spacer_thk_var',    'H_MG_var',
+            'MG_climb_var',    'SAC_coeff_c_var',    'SAC_loss_var',    'CA_liner_thk_var',    'CA_APT',    'CB_CDU',    'CBtoPC_OVL',
+            'CB_APT',    'H_CA_final_var',    'mCRCA_var',    'CA_BM_thk_var',    'H_CB_total_var',    'MG_loss_var'
+        ]
+
+class margin3(margin):
+    def __init__(self):
+        # PC-CA short
+        self.equations = [
+        'Ax = CPP / 2 - CA_SAC_TCD / 2 + CA_OVL + CA_CDU / 2 + CA_LER + CA_APT + CA_liner_thk + CA_liner_thk_var',
+        'Ay = H_SAC + H_SAC_var',
+        'Bx = MG_CD / 2 + HK_thk + Incoming_spacer_thk + PC_CDU / 2 + PC_LER + PC_PW + Incoming_spacer_thk_var',
+        'By = Ay',
+        'Cy = 9',
+        'x1 = Bx - Ax',
+        'if x1 > 0:',
+        '    Cx = Ax + SAC_coeff_a * (x1 ** 2) + SAC_coeff_b * x1 + SAC_coeff_c + SAC_coeff_c_var + CA_liner_thk + CA_liner_thk_var',
+        '    CA_slope_beta = CA_slope_beta_coeff_a * x1 + CA_slope_beta_coeff_b',
+        '    SAC_loss1 = SAC_loss1_coeff_a * x1 + SAC_loss1_coeff_b + SAC_loss_var',
+        '    SAC_loss2 = SAC_loss2_coeff_a * x1 + SAC_loss2_coeff_b + SAC_loss_var',
+        '    Dy = Ay - SAC_loss1',
+        '    Dx = Ax + (Ay - Dy) / tan(PI * CA_slope_beta / 180)',
+        '    Ey = Ay - SAC_loss2',
+        '    Ex = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        'else:',
+        '    Cx = Bx + CA_liner_thk + CA_liner_thk_var',
+        '    SAC_loss1 = 0',
+        '    SAC_loss2 = 0',
+        '    Dy = Ay',
+        '    Ey = Dy',
+        '    Dx = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        '    Ex = Dx',
+        'Fx = MG_CD / 2 + HK_thk_electrical + PC_CDU / 2 + PC_LER + PC_PW',
+        'Fy = H_MG + MG_climb + H_MG_var + MG_climb_var',
+        'S1 = LineABtoC(Dx, Dy, Ex, Ey, Fx, Fy)',
+        'S2 = LineABtoC(Cx, Cy, Ex, Ey, Fx, Fy)',
+        'Output = Min(S1, S2)'
+        ]
+        self.parameters = [
+            'CPP',    'MG_CD',    'HK_thk',    'HK_thk_electrical',    'H_MG',    'MG_climb',    'Incoming_spacer_thk',    'H_SAC',
+            'CA_SAC_TCD',    'CA_liner_thk',    'CA_slope_alpha',    'CA_slope_beta_coeff_a',    'CA_slope_beta_coeff_b',
+            'SAC_coeff_a',    'SAC_coeff_b',    'SAC_coeff_c',    'SAC_loss1_coeff_a',    'SAC_loss1_coeff_b',    'SAC_loss2_coeff_a',
+            'SAC_loss2_coeff_b',    'CA_OVL',    'CA_CDU',    'CA_LER',    'H_SAC_var',    'PC_CDU',    'PC_LER',    'PC_PW',
+            'Incoming_spacer_thk_var',    'H_MG_var',    'MG_climb_var',    'SAC_coeff_c_var',    'SAC_loss_var',    'CA_liner_thk_var',
+            'CA_APT'
+        ]
+
+class margin4(margin):
+    # PB-CA short
+    def __init__(self):
+        self.equations = [
+        'Ax = CPP / 2 - CA_SAC_TCD / 2 + CA_OVL + CA_CDU / 2 + CA_LER + CA_APT + CA_liner_thk + CA_liner_thk_var',
+        'Ay = H_SAC + H_SAC_var',
+        'Bx = MG_CD / 2 + HK_thk + Incoming_spacer_thk + PC_CDU / 2 + PC_LER + PC_PW + Incoming_spacer_thk_var',
+        'By = Ay',
+        'Cy = 9',
+        'x1 = Bx - Ax',
+        'if x1 > 0:',
+        '    Cx = Ax + SAC_coeff_a * (x1 ** 2) + SAC_coeff_b * x1 + SAC_coeff_c + CA_liner_thk + CA_liner_thk_var',
+        '    CA_slope_beta = CA_slope_beta_coeff_a * x1 + CA_slope_beta_coeff_b',
+        '    SAC_loss1 = SAC_loss1_coeff_a * x1 + SAC_loss1_coeff_b + SAC_loss_var',
+        '    SAC_loss2 = SAC_loss2_coeff_a * x1 + SAC_loss2_coeff_b + SAC_loss_var',
+        '    Dy = Ay - SAC_loss1',
+        '    Dx = Ax + (Ay - Dy) / tan(PI * CA_slope_beta / 180)',
+        '   Ey = Ay - SAC_loss2',
+        '    Ex = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        'else:',
+        '    Cx = Ax + (Ay - Cy) / tan(PI * CA_slope_alpha / 180) + CA_liner_thk + CA_liner_thk_var',
+        '    SAC_loss1 = 0',
+        '    SAC_loss2 = 0',
+        '    Dy = Ay',
+        '    Ey = Dy',
+        '    Dx = Cx - (Ey - Cy) / tan(PI * CA_slope_alpha / 180)',
+        '    Ex = Dx',
+        'Fx = MG_CD / 2 + HK_thk_electrical + PC_CDU / 2 + PC_LER + PC_PW',
+        'Fy = H_MG + MG_climb + H_MG_var + MG_climb_var',
+        'S1 = LineABtoC(Dx, Dy, Ex, Ey, Fx, Fy)',
+        'S2 = LineABtoC(Cx, Cy, Ex, Ey, Fx, Fy)',
+        'Output = Min(S1, S2)'
+        ]
+        self.parameters = [
+            'CPP',    'MG_CD',    'HK_thk',    'HK_thk_electrical',    'H_MG',    'MG_climb',    'Incoming_spacer_thk',    'H_SAC',
+            'CA_SAC_TCD',    'CA_liner_thk',    'CA_slope_alpha',    'CA_slope_beta_coeff_a',    'CA_slope_beta_coeff_b',
+            'SAC_coeff_a',    'SAC_coeff_b',    'SAC_coeff_c',    'SAC_loss1_coeff_a',    'SAC_loss1_coeff_b',    'SAC_loss2_coeff_a',
+            'SAC_loss2_coeff_b',    'CA_OVL',    'CA_CDU',    'CA_LER',    'H_SAC_var',    'PC_CDU',    'PC_LER',    'PC_PW',
+            'Incoming_spacer_thk_var',    'H_MG_var',    'MG_climb_var',    'SAC_loss_var',    'CA_liner_thk_var',    'CA_APT'
+
+        ]
+
+class margin5(margin):
+    def __init__(self):
+        # VA NOP
+        self.parameters = [
+            'H_VA','SiN_thk','TEOS1_thk','TEOS2_thk','VA_TCD','VA_slope','VA_CDU','VA_APT',
+            'SiN_thk_var','TEOS1_thk_var','TEOS2_thk_var','VA_slope_var'
+        ]
+
+        self.equations = [
+        'Ay = TEOS1_thk + SiN_thk + TEOS2_thk + SiN_thk_var + TEOS1_thk_var + TEOS2_thk_var',
+        'Ax = -VA_TCD / 2 - (TEOS1_thk + SiN_thk + TEOS2_thk - H_VA) / tan(np.pi * VA_slope / 180) - VA_CDU / 2 - VA_APT',
+        'Cy = Ay',
+        'Cx = VA_TCD / 2 + (TEOS1_thk + SiN_thk + TEOS2_thk - H_VA) / tan(np.pi * VA_slope / 180) + VA_CDU / 2 + VA_APT',
+        'By = 0',
+        'Bx = Ax + (Ay - By) / tan(np.pi * (VA_slope + VA_slope_var) / 180)',
+        'Dy = 0',
+        'Dx = Cx - (Cy - Dy) / tan(np.pi * (VA_slope + VA_slope_var) / 180)',
+        'Output = Dx - Bx'
+        ]
+
+def LoadData(datafile):
+    f = open(datafile, 'r')
+    data = []
+
+    for index, line in enumerate(f.readlines()):
+        if index == 0:
+            data = []
+        else:
+            data.append(line.strip('\n'))
+    return data
+
+
+# x_margin1 = [48,14.5,1.5,1,15.5,0,8.6,58,25.7,0.97,87,0,87,0.0336,0.2763,2.0856,0,10,0,18,32,2.5,2.2,1.4,3,2,1.4,0,0.95,3,0,3.7,0.1,0.3,3]
+# x_margin5 = [17,5,20,20,14.3,89,2.4,0.6,0.5,2,2,1]
+
+data1 = './data/CA TCD 산포_100.csv'
+data2 = './data/CA-CB short_100.csv'
+data3 = './data/PC-CA short_100.csv'
+data4 = './data/PB-CA short_100.csv'
+data5 = './data/VA NOP_100.csv'
+
+data = LoadData(data3)
+m = margin3()
+
+# x = x_margin1
+# y = m.f(x)
+# print(x, y)
+
+
+
+Numdata = 10
+Numsample = 100
+for i in range(Numdata):
+    index = np.random.randint(Numsample)
+    indata = data[index].split(',')
+    x = indata[1:-1]
+    x = list(np.float_(x))
+    idx = indata[0]
+    y = indata[-1]
+    y2 = m.f(x)
+    print(idx, x, y, y2)
+
