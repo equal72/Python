@@ -1,0 +1,21 @@
+from pathlib import Path
+import numpy as np
+import pandas as pd
+
+filename = './sample.csv'
+df = pd.read_csv(filename, index_col=False, names=['x','y','w','h'])
+print(df)
+df = df.sort_values(by=['h','w','x','y'])
+print(df)
+df_h = df.drop_duplicates(['h'])
+print(f'Number of height :', len(df_h)-1)
+print(df_h[['h']])
+df_w = df.drop_duplicates(['w'])
+print(f'Number of width :', len(df_w)-1)
+print(df_w[['w']])
+df_wh = df.drop_duplicates(['h', 'w'])
+print(f'Number of width&height :', len(df_wh)-1)
+print(df_wh[['h','w']])
+# df.to_csv('sample_sort.csv')
+# for index in df.index:
+#     print(index)
