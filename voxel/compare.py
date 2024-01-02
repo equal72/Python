@@ -22,4 +22,8 @@ with open('input.txt', 'r') as input:
         else:
             print(f"{item}: The files are different")
 
-      
+#input.txt
+# logic_gaa_final 75.voxel voxel_job_1232800001_step_75.txt
+# logic_fin_final 64.voxel voxel_job_1232800000_step_64.txt
+# dram_igzo 102.voxel voxel_job_1232900000_step_102.txt
+# vnand 90.voxel voxel_job_140200007_step_90.txt
